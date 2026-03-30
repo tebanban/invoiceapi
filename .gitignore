@@ -1,0 +1,27 @@
+# Environment Variables (Secrets)
+.env
+
+# SQLite Databases
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Logs
+*.log
+npm-debug.log*
+
+# Node.js
+node_modules/
+package-lock.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+
+# OS specific files
+.DS_Store
+Thumbs.db
