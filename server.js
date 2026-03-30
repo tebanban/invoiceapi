@@ -19,6 +19,9 @@ const DB_PATH = process.env.DB_PATH
     : path.join(__dirname, process.env.DB_PATH)
   : path.join(__dirname, "inventory.db");
 
+// Open database connection once for the lifecycle of the server
+const db = new sqlite3.Database(DB_PATH);
+
 const s3Client = new S3Client({
   region: process.env.AWS_REGION || "us-east-1",
   credentials: {
@@ -28,35 +31,60 @@ const s3Client = new S3Client({
 });
 
 /**
- * GET /api/invoices/:clave
- * Returns a temporary S3 pre-signed URL for the invoice PDF.
+ * Middleware to check for a simple API Key
  */
-app.get("/api/invoices/:clave", (req, res) => {
+const authenticate = (req, res, next) => {
+  const apiKey = req.headers["x-api-key"];
+  if (process.env.API_KEY && apiKey !== process.env.API_KEY) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  next();
+};
+
+/**
+ * GET /api/invoices/:clave
+ * Returns temporary S3 pre-signed URLs for all files (or a specific type) associated with a clave.
+ */
+app.get("/api/invoices/:clave", authenticate, (req, res) => {
   const { clave } = req.params;
-  const db = new sqlite3.Database(DB_PATH);
+  const { type } = req.query; // Optional query param: ?type=pdf or ?type=xml
 
-  // We specifically look for the PDF version for browser viewing
-  const sql = `SELECT s3_key, file_name FROM invoices WHERE clave = ? AND file_name LIKE '%.pdf' LIMIT 1`;
+  let sql = `SELECT s3_key, file_name FROM invoices WHERE clave = ?`;
+  const params = [clave];
 
-  db.get(sql, [clave], async (err, row) => {
-    db.close();
+  if (type) {
+    sql += ` AND file_name LIKE ?`;
+    params.push(`%.${type}`);
+  }
+
+  db.all(sql, params, async (err, rows) => {
     if (err) return res.status(500).json({ error: "Database error" });
-    if (!row)
-      return res
-        .status(404)
-        .json({ error: "Invoice PDF not found for this clave" });
+    if (!rows || rows.length === 0)
+      return res.status(404).json({ error: "No files found for this clave" });
 
     try {
-      const command = new GetObjectCommand({
-        Bucket: S3_BUCKET,
-        Key: row.s3_key,
-      });
+      const files = await Promise.all(
+        rows.map(async (row) => {
+          const command = new GetObjectCommand({
+            Bucket: S3_BUCKET,
+            Key: row.s3_key,
+          });
 
-      // URL expires in 60 minutes
-      const url = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
-      res.json({ clave, url, fileName: row.file_name });
+          // URL expires in 60 minutes
+          const url = await getSignedUrl(s3Client, command, {
+            expiresIn: 3600,
+          });
+          return {
+            fileName: row.file_name,
+            url: url,
+            type: path.extname(row.file_name).toLowerCase().replace(".", ""),
+          };
+        }),
+      );
+
+      res.json({ clave, files });
     } catch (s3Err) {
-      res.status(500).json({ error: "Failed to generate secure link" });
+      res.status(500).json({ error: "Failed to generate secure links" });
     }
   });
 });
@@ -65,7 +93,7 @@ app.get("/api/invoices/:clave", (req, res) => {
  * POST /api/sync
  * Manually triggers the email processing script.
  */
-app.post("/api/sync", async (req, res) => {
+app.post("/api/sync", authenticate, async (req, res) => {
   try {
     await processInvoices();
     res.json({ status: "success", message: "Inbox processed successfully" });

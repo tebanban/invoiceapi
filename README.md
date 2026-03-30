@@ -92,6 +92,14 @@ node server.js
 | `POST` | `/api/sync`            | Triggers a manual scan of the email inbox.                   |
 | `GET`  | `/api/invoices/:clave` | Returns a temporary S3 link for the specified invoice Clave. |
 
+### Local Download Utility (Node.js)
+
+To download a specific file from S3 to your local filesystem using the Node.js utility:
+
+```bash
+node -e 'require("./download_file").downloadFromS3("S3_KEY_PATH", "LOCAL_FILENAME")'
+```
+
 ## Deployment on DreamHost VPS
 
 ### Automation with Cron
