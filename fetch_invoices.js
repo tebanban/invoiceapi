@@ -1,8 +1,9 @@
 const { ImapFlow } = require("imapflow");
 const { simpleParser } = require("mailparser");
 const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
-const sqlite3 = require("sqlite3").verbose();
+const Database = require("better-sqlite3");
 const path = require("path");
+const fs = require("fs");
 
 // Ensure .env is loaded from the script's directory
 require("dotenv").config({ path: path.join(__dirname, ".env") });
@@ -39,47 +40,27 @@ const s3Client = new S3Client({
   },
 });
 
-async function updateDatabase(db, clave, s3Key, fileName) {
-  return new Promise((resolve, reject) => {
-    const sql = `
-            INSERT INTO invoices (clave, s3_key, file_name, created_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(clave, file_name) DO NOTHING
-        `;
-    db.run(sql, [clave, s3Key, fileName, new Date().toISOString()], (err) => {
-      if (err) {
-        console.error(`Database error: ${err.message}`);
-        return reject(err);
-      }
-      console.log(`Index updated for Clave: ${clave}`);
-      resolve();
-    });
-  });
+function updateDatabase(db, clave, s3Key, fileName) {
+  const sql = `
+      INSERT INTO invoices (clave, s3_key, file_name, created_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(clave, file_name) DO NOTHING
+  `;
+  db.prepare(sql).run(clave, s3Key, fileName, new Date().toISOString());
+  console.log(`Index updated for Clave: ${clave}`);
 }
 
-async function isEmailProcessed(db, messageId) {
-  return new Promise((resolve) => {
-    db.get(
-      "SELECT 1 FROM processed_emails WHERE message_id = ?",
-      [messageId],
-      (err, row) => {
-        resolve(!!row);
-      },
-    );
-  });
+function isEmailProcessed(db, messageId) {
+  const row = db
+    .prepare("SELECT 1 FROM processed_emails WHERE message_id = ?")
+    .get(messageId);
+  return !!row;
 }
 
-async function markEmailAsProcessed(db, messageId) {
-  return new Promise((resolve, reject) => {
-    db.run(
-      "INSERT INTO processed_emails (message_id) VALUES (?)",
-      [messageId],
-      (err) => {
-        if (err) reject(err);
-        else resolve();
-      },
-    );
-  });
+function markEmailAsProcessed(db, messageId) {
+  db.prepare("INSERT INTO processed_emails (message_id) VALUES (?)").run(
+    messageId,
+  );
 }
 
 function extractClave(content, filename) {
@@ -93,7 +74,13 @@ function extractClave(content, filename) {
 
 async function processInvoices() {
   const client = new ImapFlow(IMAP_CONFIG);
-  const db = new sqlite3.Database(DB_PATH);
+
+  const dbDir = path.dirname(DB_PATH);
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+  }
+
+  const db = new Database(DB_PATH);
   console.log(`Connecting to ${IMAP_CONFIG.host}...`);
 
   try {
@@ -124,7 +111,7 @@ async function processInvoices() {
         console.log(`    From: ${from}`);
         console.log(`    Subject: ${subject}`);
 
-        if (await isEmailProcessed(db, messageId)) {
+        if (isEmailProcessed(db, messageId)) {
           console.log(`    Status: Skipped (Already in local database)`);
           continue;
         }
@@ -169,7 +156,7 @@ async function processInvoices() {
               }),
             );
 
-            await updateDatabase(db, clave, s3Key, att.filename);
+            updateDatabase(db, clave, s3Key, att.filename);
           }
 
           console.log(`    Result: Successfully processed invoice ${clave}`);
@@ -180,7 +167,7 @@ async function processInvoices() {
         }
 
         // Always mark as processed in our local DB so we don't scan it again
-        await markEmailAsProcessed(db, messageId);
+        markEmailAsProcessed(db, messageId);
       }
 
       if (totalFound === 0) {

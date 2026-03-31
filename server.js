@@ -1,8 +1,9 @@
 const express = require("express");
 const { S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
-const sqlite3 = require("sqlite3").verbose();
+const Database = require("better-sqlite3");
 const path = require("path");
+const fs = require("fs");
 const { processInvoices } = require("./fetch_invoices");
 
 // Load environment variables
@@ -18,7 +19,7 @@ const DB_PATH = process.env.DB_PATH
   ? path.isAbsolute(process.env.DB_PATH)
     ? process.env.DB_PATH
     : path.join(__dirname, process.env.DB_PATH)
-  : path.join(__dirname, "invoicemail.db");
+  : path.join(__dirname, "invoiceapi.db");
 
 const requiredEnv = ["S3_BUCKET_NAME", "AWS_ACCESS_KEY", "AWS_SECRET_KEY"];
 const missingEnv = requiredEnv.filter((name) => !process.env[name]);
@@ -30,8 +31,14 @@ if (missingEnv.length > 0) {
   process.exit(1);
 }
 
+// Ensure the directory exists
+const dbDir = path.dirname(DB_PATH);
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+}
+
 // Open database connection once for the lifecycle of the server
-const db = new sqlite3.Database(DB_PATH);
+const db = new Database(DB_PATH);
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION || "us-east-1",
@@ -60,7 +67,7 @@ const authenticate = (req, res, next) => {
  * GET /api/invoices/:clave
  * Returns temporary S3 pre-signed URLs for all files (or a specific type) associated with a clave.
  */
-app.get("/api/invoices/:clave", authenticate, (req, res) => {
+app.get("/api/invoices/:clave", authenticate, async (req, res) => {
   const { clave } = req.params;
   const { type } = req.query; // Optional query param: ?type=pdf or ?type=xml
 
@@ -72,36 +79,37 @@ app.get("/api/invoices/:clave", authenticate, (req, res) => {
     params.push(`%.${type}`);
   }
 
-  db.all(sql, params, async (err, rows) => {
-    if (err) return res.status(500).json({ error: "Database error" });
-    if (!rows || rows.length === 0)
+  try {
+    const rows = db.prepare(sql).all(params);
+
+    if (!rows || rows.length === 0) {
       return res.status(404).json({ error: "No files found for this clave" });
-
-    try {
-      const files = await Promise.all(
-        rows.map(async (row) => {
-          const command = new GetObjectCommand({
-            Bucket: S3_BUCKET,
-            Key: row.s3_key,
-          });
-
-          // URL expires in 60 minutes
-          const url = await getSignedUrl(s3Client, command, {
-            expiresIn: 3600,
-          });
-          return {
-            fileName: row.file_name,
-            url: url,
-            type: path.extname(row.file_name).toLowerCase().replace(".", ""),
-          };
-        }),
-      );
-
-      res.json({ clave, files });
-    } catch (s3Err) {
-      res.status(500).json({ error: "Failed to generate secure links" });
     }
-  });
+
+    const files = await Promise.all(
+      rows.map(async (row) => {
+        const command = new GetObjectCommand({
+          Bucket: S3_BUCKET,
+          Key: row.s3_key,
+        });
+
+        const url = await getSignedUrl(s3Client, command, {
+          expiresIn: 3600,
+        });
+        return {
+          fileName: row.file_name,
+          url: url,
+          type: path.extname(row.file_name).toLowerCase().replace(".", ""),
+        };
+      }),
+    );
+
+    res.json({ clave, files });
+  } catch (err) {
+    res
+      .status(500)
+      .json({ error: "Database or S3 error", details: err.message });
+  }
 });
 
 /**
