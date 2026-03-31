@@ -36,7 +36,13 @@ pip install boto3 python-dotenv
 
 ### 2. Configuration
 
-Create a `.env` file in the root directory (see `.env.example` or use the existing one) and fill in your credentials:
+Create a `.env` file in the root directory from `.env.example` and fill in your credentials:
+
+```bash
+cp .env.example .env
+```
+
+Then set values like:
 
 ```dotenv
 IMAP_SERVER=imap.dreamhost.com
@@ -82,7 +88,7 @@ python fetch_invoices.py
 Start the Express server to serve pre-signed URLs and provide a manual sync endpoint:
 
 ```bash
-node server.js
+npm start
 ```
 
 #### API Endpoints
@@ -91,6 +97,7 @@ node server.js
 | :----- | :--------------------- | :----------------------------------------------------------- |
 | `POST` | `/api/sync`            | Triggers a manual scan of the email inbox.                   |
 | `GET`  | `/api/invoices/:clave` | Returns a temporary S3 link for the specified invoice Clave. |
+| `GET`  | `/api/health`          | Simple health check endpoint for uptime monitoring.          |
 
 ### Local Download Utility (Node.js)
 
@@ -102,20 +109,46 @@ node -e 'require("./download_file").downloadFromS3("S3_KEY_PATH", "LOCAL_FILENAM
 
 ## Deployment on DreamHost VPS
 
-### Automation with Cron
+### Apache / Domain Routing
 
-To run the retrieval script automatically every hour, add the following to your crontab (`crontab -e`):
+DreamHost VPS does not grant `sudo`, so Apache vhost files cannot be managed manually. Instead:
 
-```bash
-0 * * * * /usr/local/bin/node /home/youruser/invoice-pull/fetch_invoices.js >> /home/youruser/invoice-pull/cron.log 2>&1
-```
+1. Point the domain `api.publiexcr.com` to `/home/puadmin2/api.publiexcr.com` via the **DreamHost panel** (Websites → Manage).
+2. Apache will pick up the `.htaccess` in the document root, which already proxies all `/api/*` requests to `http://127.0.0.1:8003`.
+3. Enable HTTPS for the domain in the DreamHost panel (free Let's Encrypt certificate).
+
+No manual Apache config or `a2ensite` commands are required.
 
 ### Keeping the API Alive
 
-It is recommended to use `pm2` to keep the API server running:
+Use `pm2` to manage the process. Since DreamHost VPS does not allow `sudo`, wire up auto-start via crontab instead of `pm2 startup`:
 
 ```bash
 npm install -g pm2
-pm2 start server.js --name "invoice-api"
+pm2 start npm --name "invoice-api" -- start
 pm2 save
+```
+
+Then add a `@reboot` entry to crontab (`crontab -e`) so PM2 resurrects the saved process list on every server reboot:
+
+```bash
+@reboot /usr/local/bin/pm2 resurrect
+```
+
+The hourly sync is handled by PM2's built-in cron scheduler — no separate crontab entry needed for it:
+
+```bash
+pm2 start npm --name "invoice-sync" --cron "0 * * * *" -- sync
+pm2 save
+```
+
+### Quick Production Checklist
+
+- Set `API_KEY` in `.env` and send it as `x-api-key` for protected endpoints.
+- Set an absolute `DB_PATH` on the server: `/home/puadmin2/bodega.database/invoicemail.db`.
+- Ensure required AWS variables are set: `S3_BUCKET_NAME`, `AWS_ACCESS_KEY`, `AWS_SECRET_KEY`, and `AWS_REGION`.
+- Initialize schema once on the VPS:
+
+```bash
+npm run init-db
 ```

@@ -29,7 +29,7 @@ const DB_PATH = process.env.DB_PATH
   ? path.isAbsolute(process.env.DB_PATH)
     ? process.env.DB_PATH
     : path.join(__dirname, process.env.DB_PATH)
-  : path.join(__dirname, "inventory.db");
+  : path.join(__dirname, "invoicemail.db");
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION || "us-east-1",

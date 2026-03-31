@@ -10,6 +10,7 @@ require("dotenv").config({ path: path.join(__dirname, ".env") });
 
 const app = express();
 const port = process.env.PORT || 3000;
+app.use(express.json());
 
 // Configuration
 const S3_BUCKET = process.env.S3_BUCKET_NAME;
@@ -17,7 +18,17 @@ const DB_PATH = process.env.DB_PATH
   ? path.isAbsolute(process.env.DB_PATH)
     ? process.env.DB_PATH
     : path.join(__dirname, process.env.DB_PATH)
-  : path.join(__dirname, "inventory.db");
+  : path.join(__dirname, "invoicemail.db");
+
+const requiredEnv = ["S3_BUCKET_NAME", "AWS_ACCESS_KEY", "AWS_SECRET_KEY"];
+const missingEnv = requiredEnv.filter((name) => !process.env[name]);
+
+if (missingEnv.length > 0) {
+  console.error(
+    `Missing required environment variables: ${missingEnv.join(", ")}`,
+  );
+  process.exit(1);
+}
 
 // Open database connection once for the lifecycle of the server
 const db = new sqlite3.Database(DB_PATH);
@@ -28,6 +39,10 @@ const s3Client = new S3Client({
     accessKeyId: process.env.AWS_ACCESS_KEY,
     secretAccessKey: process.env.AWS_SECRET_KEY,
   },
+});
+
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok" });
 });
 
 /**
@@ -104,4 +119,14 @@ app.post("/api/sync", authenticate, async (req, res) => {
 
 app.listen(port, () => {
   console.log(`Invoice API listening at http://localhost:${port}`);
+});
+
+process.on("SIGINT", () => {
+  db.close();
+  process.exit(0);
+});
+
+process.on("SIGTERM", () => {
+  db.close();
+  process.exit(0);
 });

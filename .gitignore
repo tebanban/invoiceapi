@@ -21,6 +21,7 @@ __pycache__/
 *$py.class
 .venv/
 venv/
+fetch_invoices.py
 
 # OS specific files
 .DS_Store

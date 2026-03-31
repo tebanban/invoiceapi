@@ -22,7 +22,7 @@ S3_PREFIX = os.getenv("S3_PATH_PREFIX", "")
 S3_PREFIX = f"{S3_PREFIX}/" if S3_PREFIX else ""
 
 # Resolve DB_PATH relative to the script if it's a relative path
-env_db_path = os.getenv("DB_PATH", "inventory.db")
+env_db_path = os.getenv("DB_PATH", "invoicemail.db")
 DB_PATH = env_db_path if os.path.isabs(env_db_path) else os.path.join(script_dir, env_db_path)
 
 # AWS Setup
