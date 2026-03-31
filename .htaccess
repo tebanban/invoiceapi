@@ -1,0 +1,12 @@
+RewriteEngine On
+
+# Proxy all /api/* requests to Node on port 8003
+RewriteRule ^api/(.*)$ http://127.0.0.1:8003/api/$1 [P,L,QSA,NE]
+
+# If file or folder exists, serve it directly
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# React SPA fallback
+RewriteRule . /index.html [L]
