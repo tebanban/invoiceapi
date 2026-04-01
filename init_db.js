@@ -30,6 +30,13 @@ db.exec(`
         message_id TEXT PRIMARY KEY,
         processed_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS sync_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        scanned_count INTEGER,
+        retrieved_count INTEGER
+    );
 `);
 
 console.log("Database initialized successfully at:", DB_PATH);

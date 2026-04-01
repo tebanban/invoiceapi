@@ -97,6 +97,7 @@ async function processInvoices() {
     try {
       // Search and fetch ALL messages within the recent window (ignoring seen/unseen)
       let totalFound = 0;
+      let totalRetrieved = 0;
       for await (let message of client.fetch(
         { since: sinceDate },
         { source: true },
@@ -142,6 +143,7 @@ async function processInvoices() {
           console.log(
             `    Action: Processing ${validAttachments.length} files...`,
           );
+          totalRetrieved++;
           for (const att of validAttachments) {
             const ext = path.extname(att.filename || "").toLowerCase();
             const s3Key = `${S3_PREFIX}${clave}/${att.filename}`;
@@ -169,6 +171,11 @@ async function processInvoices() {
         // Always mark as processed in our local DB so we don't scan it again
         markEmailAsProcessed(db, messageId);
       }
+
+      // Log synchronization statistics for reporting
+      db.prepare(
+        "INSERT INTO sync_history (scanned_count, retrieved_count) VALUES (?, ?)",
+      ).run(totalFound, totalRetrieved);
 
       if (totalFound === 0) {
         console.log("\nNo unread emails found matching the criteria.");

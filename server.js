@@ -57,6 +57,14 @@ app.get("/api/health", (req, res) => {
  */
 const authenticate = (req, res, next) => {
   const apiKey = req.headers["x-api-key"];
+
+  if (!process.env.API_KEY) {
+    console.warn(
+      "WARNING: API_KEY is not set in environment variables. Access is unprotected.",
+    );
+    return next();
+  }
+
   if (process.env.API_KEY && apiKey !== process.env.API_KEY) {
     return res.status(401).json({ error: "Unauthorized" });
   }
@@ -116,12 +124,20 @@ app.get("/api/invoices/:clave", authenticate, async (req, res) => {
  * POST /api/sync
  * Manually triggers the email processing script.
  */
+let isSyncing = false;
 app.post("/api/sync", authenticate, async (req, res) => {
+  if (isSyncing) {
+    return res.status(409).json({ error: "Sync already in progress" });
+  }
+
+  isSyncing = true;
   try {
     await processInvoices();
     res.json({ status: "success", message: "Inbox processed successfully" });
   } catch (err) {
     res.status(500).json({ error: "Sync failed", details: err.message });
+  } finally {
+    isSyncing = false;
   }
 });
 
