@@ -138,7 +138,7 @@ Then add a `@reboot` entry to crontab (`crontab -e`) so PM2 resurrects the saved
 The hourly sync is handled by PM2's built-in cron scheduler — no separate crontab entry needed for it:
 
 ```bash
-pm2 start npm --name "invoice-sync" --cron "0 * * * *" -- sync
+pm2 start npm --name "invoice-sync" --cron "*/15 * * * *" -- run sync
 pm2 save
 ```
 

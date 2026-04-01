@@ -19,7 +19,17 @@ The system leverages an external IMAP script to populate the data, which is then
 
 3.  **Frontend (React):**
     - Provides a search interface or a "View Invoice" button in transaction details.
-    - Opens the generated URL in a new browser tab.
+    - **Implementation Logic:**
+      ```javascript
+      const getInvoice = async (clave) => {
+        const res = await fetch(`/api/invoices/${clave}`, {
+          headers: { "x-api-key": process.env.REACT_APP_API_KEY },
+        });
+        const { files } = await res.json();
+        const pdf = files.find((f) => f.type === "pdf");
+        if (pdf) window.open(pdf.url, "_blank");
+      };
+      ```
 
 ## 2. Database Schema
 
