@@ -1,9 +1,8 @@
 const express = require("express");
 const { S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
-const Database = require("better-sqlite3");
 const path = require("path");
-const fs = require("fs");
+const { openDatabase } = require("./db");
 const { processInvoices } = require("./fetch_invoices");
 
 // Load environment variables
@@ -15,11 +14,6 @@ app.use(express.json());
 
 // Configuration
 const S3_BUCKET = process.env.S3_BUCKET_NAME;
-const DB_PATH = process.env.DB_PATH
-  ? path.isAbsolute(process.env.DB_PATH)
-    ? process.env.DB_PATH
-    : path.join(__dirname, process.env.DB_PATH)
-  : path.join(__dirname, "invoiceapi.db");
 
 const requiredEnv = ["S3_BUCKET_NAME", "AWS_ACCESS_KEY", "AWS_SECRET_KEY"];
 const missingEnv = requiredEnv.filter((name) => !process.env[name]);
@@ -31,14 +25,8 @@ if (missingEnv.length > 0) {
   process.exit(1);
 }
 
-// Ensure the directory exists
-const dbDir = path.dirname(DB_PATH);
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
-}
-
 // Open database connection once for the lifecycle of the server
-const db = new Database(DB_PATH);
+const { db } = openDatabase();
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION || "us-east-1",

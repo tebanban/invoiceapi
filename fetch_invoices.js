@@ -1,9 +1,8 @@
 const { ImapFlow } = require("imapflow");
 const { simpleParser } = require("mailparser");
 const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
-const Database = require("better-sqlite3");
 const path = require("path");
-const fs = require("fs");
+const { openDatabase } = require("./db");
 
 // Ensure .env is loaded from the script's directory
 require("dotenv").config({ path: path.join(__dirname, ".env") });
@@ -24,13 +23,6 @@ const S3_BUCKET = process.env.S3_BUCKET_NAME;
 const S3_PREFIX = process.env.S3_PATH_PREFIX
   ? `${process.env.S3_PATH_PREFIX}/`
   : "";
-
-// Resolve DB_PATH relative to the script if it's a relative path
-const DB_PATH = process.env.DB_PATH
-  ? path.isAbsolute(process.env.DB_PATH)
-    ? process.env.DB_PATH
-    : path.join(__dirname, process.env.DB_PATH)
-  : path.join(__dirname, "invoicemail.db");
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION || "us-east-1",
@@ -74,13 +66,7 @@ function extractClave(content, filename) {
 
 async function processInvoices() {
   const client = new ImapFlow(IMAP_CONFIG);
-
-  const dbDir = path.dirname(DB_PATH);
-  if (!fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true });
-  }
-
-  const db = new Database(DB_PATH);
+  const { db } = openDatabase();
   console.log(`Connecting to ${IMAP_CONFIG.host}...`);
 
   try {

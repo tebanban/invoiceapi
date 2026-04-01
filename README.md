@@ -54,7 +54,7 @@ AWS_SECRET_KEY=your-aws-secret
 AWS_REGION=us-east-1
 S3_BUCKET_NAME=your-bucket-name
 
-DB_PATH=invoicemail.db
+DB_PATH=invoiceapi.db
 ```
 
 ### 3. Initialize the Database

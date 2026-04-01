@@ -1,18 +1,12 @@
-const Database = require("better-sqlite3");
 const path = require("path");
+const { openDatabase } = require("./db");
 const { sendReport } = require("./email_alerts");
 
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 
-const DB_PATH = process.env.DB_PATH
-  ? path.isAbsolute(process.env.DB_PATH)
-    ? process.env.DB_PATH
-    : path.join(__dirname, process.env.DB_PATH)
-  : path.join(__dirname, "invoiceapi.db");
-
 async function runDailyReport() {
   console.log("Generating daily sync report...");
-  const db = new Database(DB_PATH);
+  const { db } = openDatabase();
 
   try {
     // Aggregate stats from all runs in the last 24 hours
